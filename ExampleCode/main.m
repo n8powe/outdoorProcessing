@@ -6,6 +6,8 @@ saccade_vel_thresh = 40; %degree / second velocity threshold for saccades
 saccade_acc_thresh = 5; % degree / second / second acceleration threshold
 ret_res = 1000; % pixel resolution of retinal image space (square)
 
+mkdir retflow_flo
+
 %% paths
 
 for subj = subjIn
@@ -64,8 +66,8 @@ for subj = subjIn
     
     %% out of bound por fix
     
-    porX = min(max(porX,1),1920); % keep these within 1:1920 and 1:1080
-    porY = min(max(porY,1),1080);
+    porX = min(max(porX,1),resWidth); % keep these within 1:1920 and 1:1080
+    porY = min(max(porY,1),resHeight);
     
     %% dim fix
     if size(porX,1)>size(porX,2)
@@ -115,7 +117,7 @@ for subj = subjIn
     calibDist = 2100;
     %	save('testDat.mat','porX','porY');
     %% loop over fixations fix_itr goes from 1:num_fixations within start:end
-    parfor fix_itr = first_fix:last_fix
+    for fix_itr = first_fix:last_fix
         %	for fix_itr = 1;
         %         for fix_itr = 410:last_fix
         
@@ -135,7 +137,7 @@ for subj = subjIn
                 %		writeFlowFile(flow,'4209.flo');
                 %	end
             catch
-                flow = ones(1080,1920,2);
+                flow = ones(resHeight,resWidth,2);
             end
             %	camflow = opticalFlow(flow(:,:,1),flow(:,:,2));
             %% update gaze estimate using either eye tracker estimate (first frame of fixation block), or optic flow pathline (rest of fixation)
@@ -472,7 +474,7 @@ for subj = subjIn
             %
             tt = toc;
             disp(['Progress: ' num2str(frame_itr/endFrame) ', Currently Processing '...
-                sub_str ', ' cond_str ', est. time left: '...
+                num2str(subj) ', ' 'Retinal Flow' ', est. time left: '...
                 num2str(tt*(endFrame-frame_itr)) 'seconds']);
         end
         

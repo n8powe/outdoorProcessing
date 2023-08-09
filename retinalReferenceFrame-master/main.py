@@ -12,17 +12,29 @@ import scipy.io as sio
 from utils_misc import rotation_matrix_from_vectors
 import cv2
 import pandas as pd
-#import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 from multiprocessing import cpu_count
+import math
 
 
 
-def processData(idx,gx,gy,FL,straightGazeVec,baseVecs,blankFrame,videoRes,outPath,vidPath,vid):
+def processData(idx,gx,gy,FL,straightGazeVec,baseVecs,blankFrame,videoRes,outPath,vidPath,vid, frameList, gazeMag, prevGazeVec):
     
     print('Frame '+str(idx)+' of '+str(len(gx)))
     
     # this gaze vec
-    gazeVec = np.array([gx[idx],gy[idx],FL])
+    
+
+    gazeMag = np.sqrt(pow(gx[idx]-gx[idx-1], 2)+pow(gy[idx]-gy[idx-1], 2))
+
+    #print (gazeMag)
+    if gazeMag > 100:
+        gazeVec = np.array([gx[idx],gy[idx],FL])
+    else:
+        gazeVec = prevGazeVec + (prevGazeVec - np.array([gx[idx-1],gy[idx-1],FL]))
+        gazeVec[2] = FL
+
+    #print (gazeVec)
     gazeVec = gazeVec/np.linalg.norm(gazeVec)
 
     # this rotm
@@ -37,12 +49,19 @@ def processData(idx,gx,gy,FL,straightGazeVec,baseVecs,blankFrame,videoRes,outPat
     yCoords = (np.round(np.multiply(d,rotatedEyeVecs[:,1])).astype(int)+(1200/2)).astype(int)
     
     # create videoreader obj and writer
+    
     cap = cv2.VideoCapture(vidPath)
+    length = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    
     
    # # go to correct frame and read frame   
-    cap.set(1,idx)
+    #cap.set(1,frameList[idx])
+    #print (frameList[idx])
+    cap.set(1, idx)
     _,frame = cap.read()
-         
+
+    
+    
     # read frame
    # frame = cv2.imread(vidPath+str(idx+1)+'.png')
     
@@ -70,11 +89,67 @@ def processData(idx,gx,gy,FL,straightGazeVec,baseVecs,blankFrame,videoRes,outPat
         thisRetFrame[:,:,color] = inColor
     
     thisRetFrame = np.uint8(thisRetFrame)
+
+
     vid.write(thisRetFrame)
 
+    return [gazeMag, gazeVec]
+
+def getAverageGazePositionWithinFrame(timeNS, gx, gy):
+    
+    #startTime = timeNS[0]
+    
+    timeSeconds = np.ceil(np.linspace(0,len(timeNS)-1, num=len(timeNS)))#(timeNS - timeNS[0])/1000000000
+    #print (timeSeconds)
+    
+    totalTimeSeconds = timeSeconds[len(timeSeconds)-1]
+    print (totalTimeSeconds)
+    #frameNumber = np.floor(timeSeconds/30) # 30 is framerate of scene video 
+
+    #print (frameNumber[:])
+    
+    timeInGazeFrames = np.ceil(np.linspace(0,len(timeSeconds)-1, num=len(gx)))
+    
+    gxAvg = np.zeros(int(len(timeSeconds)))
+    gyAvg = np.zeros(int(len(timeSeconds)))
+    
+
+    
+    for i in range(0, len(timeSeconds)-1):
+        searchval = np.ceil(timeSeconds[i])
+        ii = np.where(timeInGazeFrames == searchval)[0]
+
+        startInd = ii[0]
+        endIn = ii[len(ii)-1]
+
+        gxAvg[i] = np.mean(gx[startInd:endIn])
+        gyAvg[i] = np.mean(gy[startInd:endIn])
+
+        #print (i, gxAvg[i], gyAvg[i])
+         
+    return [gxAvg, gyAvg]
+
+def getFrameNumber(gx):
+
+    frameList = np.zeros(int(len(gx)))
+    frameNum = 0
+    for i in range(1, len(gx)-1):
+        
+        remainder = i%200
+
+        if remainder == 0:
+            frameNum = frameNum + 1
+        
+        frameList[i] = frameNum
+
+        print (frameNum)
+
+
+
+    return frameList
 
 # read in params
-from config import maxEcc,FL,videoRes,vidPath,gazePath,outPath
+from config import maxEcc,FL,videoRes,vidPath,gazePath,outPath, timePath
 
 # conv to radians
 maxEcc = np.deg2rad(maxEcc)
@@ -82,9 +157,18 @@ maxEcc = np.deg2rad(maxEcc)
 # load por
 
 # x=sio.loadmat(gazePath)
+
 x=pd.read_csv(gazePath)
-gx = x['gaze_x_px'].ravel()
-gy = x['gaze_y_px'].ravel()
+
+gx = x['gaze_x_px']#.ravel()
+gy = x['gaze_y_px']#.ravel()
+
+t=pd.read_csv(timePath)
+timeNS = t['timestamp [ns]']
+
+[gx, gy] = getAverageGazePositionWithinFrame(timeNS, gx, gy)
+
+frameList = getFrameNumber(gx)
 
 # center gaze
 gx = gx-1600/2
@@ -121,8 +205,11 @@ fourcc = cv2.VideoWriter_fourcc(*'mp4v')
 
 vid = cv2.VideoWriter(outPath,fourcc,30,(videoRes,videoRes))
 
+
+prevGazeMag = 0
+prevGazeVec = 0
 #for idx in range(len(gx)):
-for idx in range(22040,22050):
-    processData(idx,gx,gy,FL,straightGazeVec,baseVecs,blankFrame,videoRes,outPath,vidPath,vid)
+for idx in range(15000,15200):
+    [prevGazeMag, prevGazeVec] = processData(idx,gx,gy,FL,straightGazeVec,baseVecs,blankFrame,videoRes,outPath,vidPath,vid, frameList, prevGazeMag, prevGazeVec)
 
 vid.release()

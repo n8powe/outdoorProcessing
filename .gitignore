@@ -1,0 +1,10 @@
+.DS_store
+
+*.csv
+*.txt
+*.flo
+*.mp4
+*.xlsx
+*.json
+*.h5
+*.exe
